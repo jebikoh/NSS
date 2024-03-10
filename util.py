@@ -3,10 +3,11 @@ import torch.nn.functional as F
 import kornia.color as kc
 
 
-def zero_upsampling(input, scale=2):
+def zero_upsampling(input, sample_factor):
+    h_scale, w_scale = sample_factor
     C, H, W = input.shape
-    up = torch.zeros((C, H * scale, W * scale), dtype=input.dtype)
-    up[:, ::scale, ::scale] = input
+    up = torch.zeros((C, H * h_scale, W * w_scale), dtype=input.dtype)
+    up[:, ::h_scale, ::w_scale] = input
 
     return up
 

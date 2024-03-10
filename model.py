@@ -10,18 +10,31 @@ class FeatureExtractionNetwork(nn.Module):
     def __init__(self):
         super(FeatureExtractionNetwork, self).__init__()
 
-        self.conv1 = nn.Conv2d(4, 32, kernel_size=KERNEL_SIZE, padding=PADDING)
-        self.conv2 = nn.Conv2d(32, 32, kernel_size=KERNEL_SIZE, padding=PADDING)
-        self.conv3 = nn.Conv2d(32, 8, kernel_size=KERNEL_SIZE, padding=PADDING)
+        self.current_frame = nn.Sequential(
+            nn.Conv2d(4, 32, kernel_size=KERNEL_SIZE, padding=PADDING),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=KERNEL_SIZE, padding=PADDING),
+            nn.ReLU(),
+            nn.Conv2d(32, 8, kernel_size=KERNEL_SIZE, padding=PADDING),
+            nn.ReLU(),
+        )
 
-        self.relu = nn.ReLU()
+        self.past_frames = nn.Sequential(
+            nn.Conv2d(4, 32, kernel_size=KERNEL_SIZE, padding=PADDING),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=KERNEL_SIZE, padding=PADDING),
+            nn.ReLU(),
+            nn.Conv2d(32, 8, kernel_size=KERNEL_SIZE, padding=PADDING),
+            nn.ReLU(),
+        )
 
     def forward(self, x):
-        x1 = self.relu(self.conv1(x))
-        x2 = self.relu(self.conv2(x1))
-        x3 = self.relu(self.conv3(x2))
+        current = self.current_frame(x[:1])
+        past = self.past_frames(x[1:])
 
-        return torch.cat([x, x3], dim=1)
+        return torch.cat(
+            torch.cat([x[:1], current], dim=1), torch.cat([x[1:], past], dim=1), dim=0
+        )
 
 
 class FeatureReweightingNetwork(nn.Module):
@@ -95,7 +108,11 @@ class ReconstructionNetwork(nn.Module):
 
 
 class NeuralSuperSamplingNetwork(nn.Module):
-    def __init__(self, num_frames):
+    def __init__(self, num_frames, source_resolution, target_resolution):
         super(NeuralSuperSamplingNetwork, self).__init__()
         # TODO: Implement the network
-        pass
+        self.num_frames = num_frames
+        self.sample_factor = (
+            target_resolution[0] // source_resolution[0],
+            target_resolution[1] // source_resolution[1],
+        )
