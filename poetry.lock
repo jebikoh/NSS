@@ -69,6 +69,26 @@ MarkupSafe = ">=2.0"
 i18n = ["Babel (>=2.7)"]
 
 [[package]]
+name = "kornia"
+version = "0.7.1"
+description = "Open Source Differentiable Computer Vision Library for PyTorch"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "kornia-0.7.1-py2.py3-none-any.whl", hash = "sha256:bd1cbe99373beafe6e59423be2374afbc2086a9ba57a8c66b94db6622b86f091"},
+    {file = "kornia-0.7.1.tar.gz", hash = "sha256:65b54a50f70c1f88240b557fda3fdcc1ab866982a5d062e52213130f5a48465c"},
+]
+
+[package.dependencies]
+packaging = "*"
+torch = ">=1.9.1"
+
+[package.extras]
+dev = ["coverage", "kornia-rs (==0.0.8)", "mypy[reports]", "numpy", "onnx", "pre-commit (>=2)", "pydocstyle", "pytest (==7.4.3)", "pytest-timeout"]
+docs = ["PyYAML (>=5.1)", "furo", "kornia-moons", "matplotlib", "opencv-python", "sphinx", "sphinx-autodoc-defaultargs", "sphinx-autodoc-typehints", "sphinx-copybutton (>=0.3)", "sphinx-design", "sphinxcontrib-bibtex", "sphinxcontrib-gtagjs", "sphinxcontrib-youtube"]
+x = ["accelerate (==0.25.0)", "onnxruntime-gpu (>=1.16)"]
+
+[[package]]
 name = "markupsafe"
 version = "2.1.5"
 description = "Safely add untrusted strings to HTML/XML markup."
@@ -359,6 +379,17 @@ files = [
 ]
 
 [[package]]
+name = "packaging"
+version = "24.0"
+description = "Core utilities for Python packages"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "packaging-24.0-py3-none-any.whl", hash = "sha256:2ddfb553fdf02fb784c234c7ba6ccc288296ceabec964ad2eae3777778130bc5"},
+    {file = "packaging-24.0.tar.gz", hash = "sha256:eb82c5e3e56209074766e6885bb04b8c38a0c015d0a30036ebe7ece34c9989e9"},
+]
+
+[[package]]
 name = "pillow"
 version = "10.2.0"
 description = "Python Imaging Library (Fork)"
@@ -607,4 +638,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "1343e5f43cb4385b30baab77270faf77a7652bcc9d5c165a903016d09725a3e0"
+content-hash = "e0e04b2e23ed268ba6c9caf107d39821dd678e0e56ccf2bff028e703b25ad82f"

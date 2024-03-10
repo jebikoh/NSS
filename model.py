@@ -92,3 +92,10 @@ class ReconstructionNetwork(nn.Module):
         x9 = self.relu(self.conv9(x9))
 
         return self.conv10(x9)
+
+
+class NeuralSuperSamplingNetwork(nn.Module):
+    def __init__(self, num_frames):
+        super(NeuralSuperSamplingNetwork, self).__init__()
+        # TODO: Implement the network
+        pass

@@ -1,7 +1,6 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import time
+import kornia.color as kc
 
 
 def zero_upsampling(input, scale=2):
@@ -34,3 +33,11 @@ def backward_warp(input, motion_vectors):
 
     # Warp the input tensor off the grid using bilinear interpolation
     return F.grid_sample(input, vgrid.permute(0, 2, 3, 1), mode="bilinear")
+
+
+def rgb_to_ycbcr(images):
+    return kc.rgb_to_ycbcr(images)
+
+
+def ycbcr_to_rgb(images):
+    return kc.ycbcr_to_rgb(images)
