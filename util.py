@@ -33,7 +33,9 @@ def backward_warp(input, motion_vectors):
     vgrid[:, 1, :, :] = 2.0 * vgrid[:, 1, :, :] / max(H - 1, 1) - 1.0
 
     # Warp the input tensor off the grid using bilinear interpolation
-    return F.grid_sample(input, vgrid.permute(0, 2, 3, 1), mode="bilinear")
+    return F.grid_sample(
+        input, vgrid.permute(0, 2, 3, 1), mode="bilinear", align_corners=False
+    )
 
 
 def rgb_to_ycbcr(images):
