@@ -129,7 +129,7 @@ class ReconstructionNetwork(nn.Module):
         x9 = torch.cat([x2, x8], dim=1)
         x9 = self.relu(self.conv9(x9))
 
-        return self.conv10(x9)
+        return self.relu(self.conv10(x9))
 
 
 class NeuralSuperSamplingNetwork(nn.Module):
