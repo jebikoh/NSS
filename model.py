@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import util
 
 PADDING = "same"
@@ -28,13 +29,32 @@ class FeatureExtractionNetwork(nn.Module):
             nn.ReLU(),
         )
 
-    def forward(self, x):
-        current = self.current_frame(x[:1])
-        past = self.past_frames(x[1:])
+    def forward(self, current_frame, past_frames):
+        # current_frame: (B, 4, H, W)
+        # past_frames: (B * (I - 1), 4, H, W)
+        features_current = self.current_frame(current_frame)
+        features_past = self.past_frames(past_frames)
 
+        # (B * I, C, H, W)
         return torch.cat(
-            torch.cat([x[:1], current], dim=1), torch.cat([x[1:], past], dim=1), dim=0
+            torch.cat([current_frame, features_current], dim=1),
+            torch.cat([past_frames, features_past], dim=1),
+            dim=0,
         )
+
+
+class ZeroUpsampling(nn.Module):
+    def __init__(self, sample_factor):
+        super(ZeroUpsampling, self).__init__()
+        self.sample_factor = sample_factor
+
+    def forward(self, x):
+        h_scale, w_scale = self.sample_factor
+        B, C, H, W = x.shape
+        up = torch.zeros((B, C, H * h_scale, W * w_scale), dtype=x.dtype)
+        up[:, :, ::h_scale, ::w_scale] = x
+
+        return up
 
 
 class FeatureReweightingNetwork(nn.Module):
@@ -74,6 +94,7 @@ class ReconstructionNetwork(nn.Module):
         self.conv6 = nn.conv2d(128, 128, kernel_size=KERNEL_SIZE, padding=PADDING)
         # The paper isn't clear on what "upsize" is
         # I think this is the most likely interpretation
+        # TODO: Try upsampling (clone) instead of transposed convolution
         self.upsize6 = nn.ConvTranspose2d(
             128, 128, kernel_size=KERNEL_SIZE, stride=2, padding=1, output_padding=1
         )
@@ -115,4 +136,53 @@ class NeuralSuperSamplingNetwork(nn.Module):
         self.sample_factor = (
             target_resolution[0] // source_resolution[0],
             target_resolution[1] // source_resolution[1],
+        )
+
+        self.feature_extraction = FeatureExtractionNetwork()
+        self.zero_upsampling = ZeroUpsampling(self.sample_factor)
+
+    def forward(self, color, motion_vectors, depth):
+        """
+        Args:
+            color: (B, I, 3, H, W)
+            motion_vectors: (B, I, 1, H, W)
+            depth: (B, I, 2, H, W)
+        """
+        B, I, _, H, W = color.shape
+        # For now, we will process the current frame and previous frames separately
+        # The can done together, but it gets confusing
+        current_frame_rgb = color[:, 0, :, :, :].unsqueeze(1)
+        current_frame_depth = depth[:, 0, :, :, :].unsqueeze(1)
+        current_frame_motion = motion_vectors[:, -1, :, :, :].unsqueeze(1)
+        current_frame_ycbcr = util.rgb_to_ycbcr(current_frame_rgb)
+
+        past_frames_color = color[:, 1:, :, :, :].reshape(B * (I - 1), 3, H, W)
+        past_frames_depth = depth[:, 1:, :, :, :].reshape(B * (I - 1), 3, H, W)
+        past_frames_motion = motion_vectors[:, 1:, :, :, :].reshape(
+            B * (I - 1), 3, H, W
+        )
+
+        # Feature extraction
+        # (B * I, 12, H, W)
+        features = self.feature_extraction(
+            torch.cat([current_frame_ycbcr, current_frame_depth], dim=1),
+            torch.cat([past_frames_color, past_frames_depth], dim=1),
+        )
+
+        # Zero upsampling
+        # (B * I, 12, H * h_scale, W * w_scale)
+        zero_upsampled_features = self.zero_upsampling(features)
+        # (B, 3, H * h_scale, W * w_scale)
+        zero_upsampled_rgb = self.zero_upsampling(current_frame_rgb)
+
+        # Warping
+        current_frame_motion_up = F.interpolate(
+            current_frame_motion,
+            scale_factor=(self.sample_factor[1], self.sample_factor[0]),
+            mode="bilinear",
+        )
+        past_frames_motion_up = F.interpolate(
+            past_frames_motion,
+            scale_factor=(self.sample_factor[1], self.sample_factor[0]),
+            mode="bilinear",
         )

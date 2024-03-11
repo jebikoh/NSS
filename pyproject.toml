@@ -11,6 +11,7 @@ torch = "^2.2.1"
 torchvision = "^0.17.1"
 torchaudio = "^2.2.1"
 kornia = "^0.7.1"
+matplotlib = "^3.8.3"
 
 
 [build-system]
