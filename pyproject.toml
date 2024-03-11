@@ -13,6 +13,10 @@ torchaudio = "^2.2.1"
 kornia = "^0.7.1"
 matplotlib = "^3.8.3"
 pytorch-msssim = "^1.0.0"
+pillow = "^10.2.0"
+opencv-python = "^4.9.0.80"
+openexr = "^3.2.3"
+imath = "^0.0.2"
 
 
 [build-system]

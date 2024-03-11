@@ -151,8 +151,8 @@ class NeuralSuperSamplingNetwork(nn.Module):
         """
         Args:
             color: (B, I, 3, H, W)
-            motion_vectors: (B, I, 1, H, W)
-            depth: (B, I, 2, H, W)
+            motion_vectors: (B, I, 2, H, W)
+            depth: (B, I, 1, H, W)
         """
         B, I, _, H, W = color.shape
         H_n, W_n = H * self.sample_factor[1], W * self.sample_factor[0]
