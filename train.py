@@ -9,7 +9,7 @@ from loss import NssLoss
 
 device = "cpu"
 
-model = NeuralSuperSamplingNetwork().to(device)
+model = NeuralSuperSamplingNetwork((480, 270), (960, 540)).to(device)
 
 criterion = NssLoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-4)

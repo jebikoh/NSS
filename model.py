@@ -146,6 +146,13 @@ class NeuralSuperSamplingNetwork(nn.Module):
         self.zero_upsampling = ZeroUpsampling(self.sample_factor)
         self.feature_reweighting = FeatureReweightingNetwork(self.num_frames)
         self.reconstruction = ReconstructionNetwork(self.num_frames)
+        self.apply(self.init_weights)
+
+    def init_weights(self, m):
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, color, motion_vectors, depth):
         """

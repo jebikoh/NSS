@@ -17,6 +17,7 @@ pillow = "^10.2.0"
 opencv-python = "^4.9.0.80"
 openexr = "^3.2.3"
 imath = "^0.0.2"
+tqdm = "^4.66.2"
 
 
 [build-system]

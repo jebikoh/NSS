@@ -34,6 +34,10 @@ class NSSDataset(Dataset):
 
         self.sequences = sorted(os.listdir(os.path.join(data_dir, "270p", "color")))
 
+        # Uncomment this if running on mac
+        if ".DS_Store" in self.sequences:
+            self.sequences.remove(".DS_Store")
+
         assert len(self.sequences) == NUM_SEQUENCES
         if split == "train":
             self.sequences = self.sequences[: int(len(self.sequences) * split_ratio)]

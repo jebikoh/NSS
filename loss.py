@@ -10,7 +10,7 @@ class NssLoss(nn.Module):
     def __init__(self, w=0.1):
         super(NssLoss, self).__init__()
         self.vgg16 = vgg16(pretrained=True).features[:23]
-        for p in self.vgg.parameters():
+        for p in self.vgg16.parameters():
             p.requires_grad = False
         self.w = w
 
