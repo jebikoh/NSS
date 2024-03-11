@@ -56,7 +56,7 @@ class NSSDataset(Dataset):
         motion_frames = []
         depth_frames = []
 
-        for i in range(frame_idx - self.sequence_length + 1, frame_idx + 1):
+        for i in range(frame_idx, frame_idx - 5, -1):
             color_path = os.path.join(
                 self.data_dir, "270p", "color", sequence, f"{i:04d}.png"
             )
@@ -107,20 +107,16 @@ if __name__ == "__main__":
     for i, data in enumerate(dataloader):
         color, motion, depth, yhat = data
 
-        # Assuming color is of shape (B, 5, C, H, W)
         color = color.squeeze(0).cpu().numpy()
         yhat = yhat.squeeze(0).permute(1, 2, 0).cpu().numpy()
 
-        # Create a figure with subplots for each color frame
         fig, axes = plt.subplots(1, 5, figsize=(20, 4))
 
-        # Iterate over the 5 frames and display each frame in a subplot
         for j in range(5):
             axes[j].imshow(color[j].transpose(1, 2, 0))
             axes[j].set_title(f"Color Frame {j+1}")
             axes[j].axis("off")
 
-        # Display the yhat image
         plt.figure(figsize=(8, 4))
         plt.imshow(yhat)
         plt.title("Yhat Image")
