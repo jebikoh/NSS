@@ -8,7 +8,8 @@ from loss import NssLoss
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    device = "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Using device:", device)
     model = NeuralSuperSamplingNetwork((480, 270), (960, 540)).to(device)
     criterion = NssLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
