@@ -807,6 +807,20 @@ files = [
 six = ">=1.5"
 
 [[package]]
+name = "pytorch-msssim"
+version = "1.0.0"
+description = "Fast and differentiable MS-SSIM and SSIM for pytorch."
+optional = false
+python-versions = "*"
+files = [
+    {file = "pytorch_msssim-1.0.0-py3-none-any.whl", hash = "sha256:0b4b7bbf7035fe9dc8084244237aac13b1f104852c45b63a7e9fab4363bede54"},
+    {file = "pytorch_msssim-1.0.0.tar.gz", hash = "sha256:53273f03ce5c435f706f49feb5110a8afe90b2519484b0fe0df9639670106d0b"},
+]
+
+[package.dependencies]
+torch = "*"
+
+[[package]]
 name = "six"
 version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
@@ -981,4 +995,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "5b9d74b4fd44b8a09906adf2f7e450baf1aa2001e282999575203b96455c7cce"
+content-hash = "e15f855f1e21b7ba63d9652963c83e26179e3b7249c5970f548438fbda81365d"
