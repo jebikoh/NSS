@@ -33,7 +33,6 @@ class NSSDataset(Dataset):
         self.data_dir = data_dir
         self.split = split
         self.sequence_length = sequence_length
-
         self.sequences = sorted(os.listdir(os.path.join(data_dir, "270p", "color")))
 
         # Uncomment this if running on mac
@@ -41,17 +40,21 @@ class NSSDataset(Dataset):
             self.sequences.remove(".DS_Store")
 
         assert len(self.sequences) == NUM_SEQUENCES
-        train, val, _ = split_ratio
+
+        train_ratio, val_ratio, _ = split_ratio
+
         if split == "train":
-            self.sequences = self.sequences[: int(len(self.sequences) * train)]
-        if split == "val":
+            self.sequences = self.sequences[: int(len(self.sequences) * train_ratio)]
+        elif split == "val":
             self.sequences = self.sequences[
-                int(len(self.sequences) * train) : int(
-                    len(self.sequences) * (train + val)
+                int(len(self.sequences) * train_ratio) : int(
+                    len(self.sequences) * (train_ratio + val_ratio)
                 )
             ]
         else:
-            self.sequences = self.sequences[int(len(self.sequences) * (train + val)) :]
+            self.sequences = self.sequences[
+                int(len(self.sequences) * (train_ratio + val_ratio)) :
+            ]
 
     def __len__(self):
         return len(self.sequences) * NUM_FRAMES
