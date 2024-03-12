@@ -35,6 +35,7 @@ if __name__ == "__main__":
 
     model = NeuralSuperSamplingNetwork((480, 270), (960, 540)).to(device)
     criterion = NssLoss()
+    criterion.to(device)
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
     best_val_loss = float("inf")
