@@ -19,8 +19,16 @@ def backward_warp(input, motion_vectors):
     # These two lines create a grid of coordinates
     # x goes from 0 to W-1, repeated H times
     # y goes from 0 to H-1, repeated W times
-    x = torch.arange(0, W, dtype=input.dtype).view(1, -1).repeat(H, 1)
-    y = torch.arange(0, H, dtype=input.dtype).view(-1, 1).repeat(1, W)
+    x = (
+        torch.arange(0, W, dtype=input.dtype, device=input.device)
+        .view(1, -1)
+        .repeat(H, 1)
+    )
+    y = (
+        torch.arange(0, H, dtype=input.dtype, device=input.device)
+        .view(-1, 1)
+        .repeat(1, W)
+    )
     # We reshape them to input shape, repeat for batch size
     x = x.view(1, 1, H, W).repeat(B, 1, 1, 1)
     y = y.view(1, 1, H, W).repeat(B, 1, 1, 1)

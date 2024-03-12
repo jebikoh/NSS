@@ -53,7 +53,9 @@ class ZeroUpsampling(nn.Module):
     def forward(self, x):
         h_scale, w_scale = self.sample_factor
         B, C, H, W = x.shape
-        up = torch.zeros((B, C, H * h_scale, W * w_scale), dtype=x.dtype)
+        up = torch.zeros(
+            (B, C, H * h_scale, W * w_scale), dtype=x.dtype, device=x.device
+        )
         up[:, :, ::h_scale, ::w_scale] = x
 
         return up
@@ -78,7 +80,7 @@ class FeatureReweightingNetwork(nn.Module):
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.tanh(self.conv3(x))
-        x = (x + 1) * self.scale_factor
+        x = (x + torch.ones_like(x)) * self.scale_factor
 
         return x
 
@@ -256,7 +258,11 @@ class NeuralSuperSamplingNetwork(nn.Module):
             [
                 weight_map,
                 torch.ones(
-                    weight_map.shape[0], 1, weight_map.shape[2], weight_map.shape[3]
+                    weight_map.shape[0],
+                    1,
+                    weight_map.shape[2],
+                    weight_map.shape[3],
+                    device=weight_map.device,
                 ),
             ],
             dim=1,

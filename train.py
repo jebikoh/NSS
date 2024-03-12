@@ -49,5 +49,4 @@ if __name__ == "__main__":
 
     torch.save(model.state_dict(), "model_weights.pth")
     print("Model weights saved as 'model_weights.pth'")
-
     print("Done")
