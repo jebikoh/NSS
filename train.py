@@ -11,8 +11,8 @@ import wandb
 DATA_DIR = "data"
 NUM_WORKERS = 4
 
-BATCH_SIZE = 2
-LR = 1e-4
+BATCH_SIZE = 4
+LR = 1e-5
 NUM_EPOCHS = 1
 
 if __name__ == "__main__":

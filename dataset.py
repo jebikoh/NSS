@@ -83,7 +83,7 @@ class NSSDataset(Dataset):
                 self.data_dir, "270p", "depth", sequence, f"{i:04d}.png"
             )
 
-            color_frames.append(np.array(Image.open(color_path).convert("RGB")) / 255.0)
+            color_frames.append(np.array(Image.open(color_path).convert("RGB")))
 
             vert_vel, hor_vel = read_exr_velocities_16bit(motion_path)
             motion_frames.append(np.stack([vert_vel, hor_vel], axis=-1))
@@ -102,7 +102,7 @@ class NSSDataset(Dataset):
                 self.data_dir, "540p", "color", sequence, f"{frame_idx:04d}.png"
             )
         ).convert("RGB")
-        yhat = np.array(yhat_img) / 255.0
+        yhat = np.array(yhat_img)
 
         color_frames = np.stack(color_frames, axis=0)
         motion_frames = np.stack(motion_frames, axis=0)
