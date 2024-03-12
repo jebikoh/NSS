@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import vgg16
+from torchvision.models import vgg16, VGG16_Weights
 from torchvision.transforms.functional import rgb_to_grayscale
 from pytorch_msssim import ssim
 
@@ -9,7 +9,7 @@ from pytorch_msssim import ssim
 class NssLoss(nn.Module):
     def __init__(self, w=0.1):
         super(NssLoss, self).__init__()
-        self.vgg16 = vgg16(pretrained=True).features[:23]
+        self.vgg16 = vgg16(weights=VGG16_Weights.IMAGENET1K_V1).features[:23]
         for p in self.vgg16.parameters():
             p.requires_grad = False
         self.w = w

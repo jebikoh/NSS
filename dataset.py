@@ -27,7 +27,9 @@ def read_exr_velocities_16bit(file_path):
 
 
 class NSSDataset(Dataset):
-    def __init__(self, data_dir, split="train", split_ratio=0.8, sequence_length=5):
+    def __init__(
+        self, data_dir, split="train", split_ratio=(0.8, 0.1, 0.1), sequence_length=5
+    ):
         self.data_dir = data_dir
         self.split = split
         self.sequence_length = sequence_length
@@ -39,10 +41,17 @@ class NSSDataset(Dataset):
             self.sequences.remove(".DS_Store")
 
         assert len(self.sequences) == NUM_SEQUENCES
+        train, val, _ = split_ratio
         if split == "train":
-            self.sequences = self.sequences[: int(len(self.sequences) * split_ratio)]
+            self.sequences = self.sequences[: int(len(self.sequences) * train)]
+        if split == "val":
+            self.sequences = self.sequences[
+                int(len(self.sequences) * train) : int(
+                    len(self.sequences) * (train + val)
+                )
+            ]
         else:
-            self.sequences = self.sequences[int(len(self.sequences) * split_ratio) :]
+            self.sequences = self.sequences[int(len(self.sequences) * (train + val)) :]
 
     def __len__(self):
         return len(self.sequences) * NUM_FRAMES
@@ -105,7 +114,7 @@ class NSSDataset(Dataset):
 
 
 if __name__ == "__main__":
-    dataset = NSSDataset("data")
+    dataset = NSSDataset("data", split="test")
     dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=4)
 
     for i, data in enumerate(dataloader):
