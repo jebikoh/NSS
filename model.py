@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import util
+
+# import util
 
 PADDING = "same"
 KERNEL_SIZE = 3
@@ -59,6 +60,44 @@ class ZeroUpsampling(nn.Module):
         up[:, :, ::h_scale, ::w_scale] = x
 
         return up
+
+
+class BackwardWarp(nn.Module):
+    def __init__(self):
+        super(BackwardWarp, self).__init__()
+
+    def forward(self, input, motion_vectors):
+        # This is taken from here: https://discuss.pytorch.org/t/image-warping-for-backward-flow-using-forward-flow-matrix-optical-flow/99298
+        # I added comments for clarity
+        B, C, H, W = input.shape
+        # These two lines create a grid of coordinates
+        # x goes from 0 to W-1, repeated H times
+        # y goes from 0 to H-1, repeated W times
+        x = (
+            torch.arange(0, W, dtype=input.dtype, device=input.device)
+            .view(1, -1)
+            .repeat(H, 1)
+        )
+        y = (
+            torch.arange(0, H, dtype=input.dtype, device=input.device)
+            .view(-1, 1)
+            .repeat(1, W)
+        )
+        # We reshape them to input shape, repeat for batch size
+        x = x.view(1, 1, H, W).repeat(B, 1, 1, 1)
+        y = y.view(1, 1, H, W).repeat(B, 1, 1, 1)
+        # We concat them: (B, 2, H, W)
+        grid = torch.cat((x, y), 1).float()
+        # We add the motion vectors to the grid
+        vgrid = grid + motion_vectors
+        # Now we normalize the vectors to be in the range [-1, 1]
+        vgrid[:, 0, :, :] = 2.0 * vgrid[:, 0, :, :] / max(W - 1, 1) - 1.0
+        vgrid[:, 1, :, :] = 2.0 * vgrid[:, 1, :, :] / max(H - 1, 1) - 1.0
+
+        # Warp the input tensor off the grid using bilinear interpolation
+        return F.grid_sample(
+            input, vgrid.permute(0, 2, 3, 1), mode="bilinear", align_corners=False
+        )
 
 
 class FeatureReweightingNetwork(nn.Module):
@@ -146,6 +185,7 @@ class NeuralSuperSamplingNetwork(nn.Module):
 
         self.feature_extraction = FeatureExtractionNetwork()
         self.zero_upsampling = ZeroUpsampling(self.sample_factor)
+        self.backward_warp = BackwardWarp()
         self.feature_reweighting = FeatureReweightingNetwork(self.num_frames)
         self.reconstruction = ReconstructionNetwork(self.num_frames)
         self.apply(self.init_weights)
@@ -177,7 +217,6 @@ class NeuralSuperSamplingNetwork(nn.Module):
             B * (I - 1), 4, H, W
         )
         # This method concatenates the features: (B, 12, H, W)
-
         features = self.feature_extraction(current_color_depth, past_color_depth)
 
         ## Temporal Re-projection
@@ -192,54 +231,49 @@ class NeuralSuperSamplingNetwork(nn.Module):
 
         # Now, we use the motion vectors to backward-warp the previous frames
         # For now, we are going to hardcode this for 4 previous frames
-        warp_i1 = util.backward_warp(
+        warp_i1 = self.backward_warp(
             upsampled_features[:, 1, :, :, :].squeeze(1),
             upsampled_motion_vectors[:, 0, :, :, :].squeeze(1),
-        )
+        ).unsqueeze(1)
 
-        warp_i2 = util.backward_warp(
+        warp_i2 = self.backward_warp(
             upsampled_features[:, 2, :, :, :].squeeze(1),
             upsampled_motion_vectors[:, 1, :, :, :].squeeze(1),
         )
-        warp_i2 = util.backward_warp(
+        warp_i2 = self.backward_warp(
             warp_i2,
             upsampled_motion_vectors[:, 0, :, :, :].squeeze(1),
-        )
+        ).unsqueeze(1)
 
-        warp_i3 = util.backward_warp(
+        warp_i3 = self.backward_warp(
             upsampled_features[:, 3, :, :, :].squeeze(1),
             upsampled_motion_vectors[:, 2, :, :, :].squeeze(1),
         )
-        warp_i3 = util.backward_warp(
+        warp_i3 = self.backward_warp(
             warp_i3,
             upsampled_motion_vectors[:, 1, :, :, :].squeeze(1),
         )
-        warp_i3 = util.backward_warp(
+        warp_i3 = self.backward_warp(
             warp_i3,
             upsampled_motion_vectors[:, 0, :, :, :].squeeze(1),
-        )
+        ).unsqueeze(1)
 
-        warp_i4 = util.backward_warp(
+        warp_i4 = self.backward_warp(
             upsampled_features[:, 4, :, :, :].squeeze(1),
             upsampled_motion_vectors[:, 3, :, :, :].squeeze(1),
         )
-        warp_i4 = util.backward_warp(
+        warp_i4 = self.backward_warp(
             warp_i4,
             upsampled_motion_vectors[:, 2, :, :, :].squeeze(1),
         )
-        warp_i4 = util.backward_warp(
+        warp_i4 = self.backward_warp(
             warp_i4,
             upsampled_motion_vectors[:, 1, :, :, :].squeeze(1),
         )
-        warp_i4 = util.backward_warp(
+        warp_i4 = self.backward_warp(
             warp_i4,
             upsampled_motion_vectors[:, 0, :, :, :].squeeze(1),
-        )
-
-        warp_i1 = warp_i1.unsqueeze(1)
-        warp_i2 = warp_i2.unsqueeze(1)
-        warp_i3 = warp_i3.unsqueeze(1)
-        warp_i4 = warp_i4.unsqueeze(1)
+        ).unsqueeze(1)
 
         zero_upsampled_warped_prev = torch.cat(
             [warp_i1, warp_i2, warp_i3, warp_i4], dim=1
