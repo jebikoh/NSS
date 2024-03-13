@@ -250,7 +250,6 @@ class NeuralSuperSamplingNetwork(nn.Module):
         weight_map = self.feature_reweighting(reweight_input)
         weight_map = torch.cat(
             [
-                weight_map,
                 torch.ones(
                     weight_map.shape[0],
                     1,
@@ -258,6 +257,7 @@ class NeuralSuperSamplingNetwork(nn.Module):
                     weight_map.shape[3],
                     device=weight_map.device,
                 ),
+                weight_map,
             ],
             dim=1,
         )
