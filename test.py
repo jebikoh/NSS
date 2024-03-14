@@ -10,7 +10,7 @@ if __name__ == "__main__":
 
     model = NeuralSuperSamplingNetwork((480, 270), (960, 540))
     checkpoint = torch.load(
-        "weights/final_weights.pth", map_location=torch.device("cpu")
+        "weights/best_model_weights.pth", map_location=torch.device("cpu")
     )
     model.load_state_dict(checkpoint)
     model.eval()

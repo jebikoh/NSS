@@ -139,10 +139,14 @@ class ReconstructionNetwork(nn.Module):
         # The paper isn't clear on what "upsize" is
         # I think this is the most likely interpretation
         # TODO: Try upsampling (clone) instead of transposed convolution
-        self.upsize6 = nn.Upsample(scale_factor=2, mode="bilinear")
+        self.upsize6 = nn.ConvTranspose2d(
+            128, 128, kernel_size=KERNEL_SIZE, stride=2, padding=1, output_padding=1
+        )
         self.conv7 = nn.Conv2d(128 + 64, 64, kernel_size=KERNEL_SIZE, padding=PADDING)
         self.conv8 = nn.Conv2d(64, 64, kernel_size=KERNEL_SIZE, padding=PADDING)
-        self.upsize8 = nn.Upsample(scale_factor=2, mode="bilinear")
+        self.upsize8 = nn.ConvTranspose2d(
+            64, 64, kernel_size=KERNEL_SIZE, stride=2, padding=1, output_padding=1
+        )
         self.conv9 = nn.Conv2d(64 + 32, 32, kernel_size=KERNEL_SIZE, padding=PADDING)
         self.conv10 = nn.Conv2d(32, 3, kernel_size=KERNEL_SIZE, padding=PADDING)
 
@@ -223,12 +227,13 @@ class NeuralSuperSamplingNetwork(nn.Module):
             motion_vectors.reshape(B * I, 2, H, W),
             scale_factor=(self.sample_factor[1], self.sample_factor[0]),
             mode="bilinear",
+            align_corners=False,
         ).reshape(B, I, 2, H_n, W_n)
 
         # Now, we use the motion vectors to backward-warp the previous frames
         # For now, we are going to hardcode this for 4 previous frames
         accumulated_warped_features = torch.zeros(
-            (B, 4, 12, H_n, W_n), device=upsampled_features.device
+            (B, I - 1, 12, H_n, W_n), device=upsampled_features.device
         )
         for i in range(1, I):
             curr_features = upsampled_features[:, i, :, :, :]

@@ -9,11 +9,11 @@ from tqdm import tqdm
 import wandb
 
 DATA_DIR = "data"
-NUM_WORKERS = 4
+NUM_WORKERS = 2
 
-BATCH_SIZE = 4
-LR = 1e-5
-NUM_EPOCHS = 1
+BATCH_SIZE = 8
+LR = 1e-4
+NUM_EPOCHS = 100
 
 if __name__ == "__main__":
     wandb.init(
@@ -64,6 +64,7 @@ if __name__ == "__main__":
 
             running_loss += loss.item()
             train_bar.set_postfix(loss=loss.item())
+            break
 
         epoch_loss = running_loss / len(train_dataloader)
         print(f"Epoch [{epoch+1}/{NUM_EPOCHS}], Train Loss: {epoch_loss:.4f}")

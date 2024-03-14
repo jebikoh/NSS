@@ -59,6 +59,18 @@ class NSSDataset(Dataset):
     def __len__(self):
         return len(self.sequences) * NUM_FRAMES
 
+    def get_random_patch_coordinates(self, img_shape, lr_patch_size=128, hr_scale=2):
+        lr_max_x = img_shape[1] - lr_patch_size
+        lr_max_y = img_shape[0] - lr_patch_size
+        lr_x = random.randint(0, lr_max_x)
+        lr_y = random.randint(0, lr_max_y)
+        hr_x = lr_x * hr_scale
+        hr_y = lr_y * hr_scale
+        return (lr_x, lr_y), (hr_x, hr_y)
+
+    def extract_patch(self, img, x, y, size):
+        return img[y : y + size, x : x + size]
+
     def __getitem__(self, idx):
         seq_idx = idx // NUM_FRAMES
         frame_idx = idx % NUM_FRAMES
@@ -72,6 +84,9 @@ class NSSDataset(Dataset):
         motion_frames = []
         depth_frames = []
 
+        img_shape = None
+        (lr_x, lr_y), (hr_x, hr_y) = (None, None), (None, None)
+
         for i in range(frame_idx, frame_idx - 5, -1):
             color_path = os.path.join(
                 self.data_dir, "270p", "color", sequence, f"{i:04d}.png"
@@ -83,10 +98,19 @@ class NSSDataset(Dataset):
                 self.data_dir, "270p", "depth", sequence, f"{i:04d}.png"
             )
 
-            color_frames.append(np.array(Image.open(color_path).convert("RGB")) / 255.0)
+            color_img = np.array(Image.open(color_path).convert("RGB")) / 255.0
+
+            if img_shape is None:
+                img_shape = color_img.shape
+                (lr_x, lr_y), (hr_x, hr_y) = self.get_random_patch_coordinates(
+                    img_shape
+                )
+
+            color_frames.append(self.extract_patch(color_img, lr_x, lr_y, 128))
 
             vert_vel, hor_vel = read_exr_velocities_16bit(motion_path)
-            motion_frames.append(np.stack([hor_vel, vert_vel], axis=-1))
+            motion_img = np.stack([hor_vel, vert_vel], axis=-1)
+            motion_frames.append(self.extract_patch(motion_img, lr_x, lr_y, 128))
 
             depth_img = np.array(Image.open(depth_path))
             depth = (
@@ -95,14 +119,16 @@ class NSSDataset(Dataset):
                 + depth_img[:, :, 2] / 255.0**3
                 + depth_img[:, :, 3] / 255.0**4
             )
-            depth_frames.append(depth[:, :, np.newaxis])
-
+            depth_frames.append(
+                self.extract_patch(depth[:, :, np.newaxis], lr_x, lr_y, 128)
+            )
         yhat_img = Image.open(
             os.path.join(
                 self.data_dir, "540p", "color", sequence, f"{frame_idx:04d}.png"
             )
         ).convert("RGB")
         yhat = np.array(yhat_img) / 255.0
+        yhat = self.extract_patch(yhat, hr_x, hr_y, 256)
 
         color_frames = np.stack(color_frames, axis=0)
         motion_frames = np.stack(motion_frames, axis=0)
