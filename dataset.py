@@ -1,5 +1,6 @@
 import os
 import random
+
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -72,12 +73,8 @@ class NSSDataset(Dataset):
         return img[y : y + size, x : x + size]
 
     def __getitem__(self, idx):
-        seq_idx = idx // NUM_FRAMES
-        frame_idx = idx % NUM_FRAMES
-
-        if frame_idx < 4:
-            frame_idx = 4
-
+        seq_idx = random.randint(0, len(self.sequences) - 1)
+        frame_idx = random.randint(4, NUM_FRAMES - 1)
         sequence = self.sequences[seq_idx]
 
         color_frames = []
@@ -139,7 +136,7 @@ class NSSDataset(Dataset):
         depth_frames = torch.from_numpy(depth_frames).permute(0, 3, 1, 2).float()
         yhat = torch.from_numpy(yhat).permute(2, 0, 1).float()
 
-        return color_frames, motion_frames, depth_frames, yhat
+        return color_frames, motion_frames, depth_frames, yhat, sequence, frame_idx
 
 
 if __name__ == "__main__":
