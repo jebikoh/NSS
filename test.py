@@ -5,7 +5,7 @@ from model import NeuralSuperSamplingNetwork
 
 
 if __name__ == "__main__":
-    test_data = NSSDataset("data", split="test")
+    test_data = NSSDataset("data", split="train")
     test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=True)
 
     model = NeuralSuperSamplingNetwork((480, 270), (960, 540))
@@ -16,7 +16,8 @@ if __name__ == "__main__":
     model.eval()
 
     for i, data in enumerate(test_loader):
-        color, motion, depth, yhat = data
+        color, motion, depth, yhat, sequence, frame_idx = data
+        print(sequence, frame_idx)
         yhat_pred = model(color, motion, depth)
 
         print(torch.max(yhat_pred), torch.min(yhat_pred))
@@ -34,6 +35,8 @@ if __name__ == "__main__":
         yhat = yhat.detach().cpu().numpy()
 
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+
+        fig.suptitle(f"Sequence: {sequence}, Frame: {frame_idx}")
 
         ax1.imshow(input)
         ax1.axis("off")
