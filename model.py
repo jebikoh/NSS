@@ -13,17 +13,16 @@ CHANNEL_DIM = 2
 
 
 class NeuralSuperSampling(nn.Module):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, input_resolution, output_resolution):
+        super(NeuralSuperSampling, self).__init__()
         self.feature_extraction = FeatureExtraction()
 
     def forward(self, batch):
         # color: (B, I, 3, H, W)
         # motion: (B, I, 2, H, W)
         # depth: (B, I, 1, H, W)
-        B, I, _, H, W = color.shape
-
         color, motion, depth = batch
+        B, I, _, H, W = color.shape
 
         # The current frame gets converted to YCbCr before feature extraction
         # But we still need to keep an RGB copy for feature reweighting
@@ -32,11 +31,12 @@ class NeuralSuperSampling(nn.Module):
 
         # Feature extraction
         features = self.feature_extraction(torch.cat([color, depth], dim=CHANNEL_DIM))
+        print(features.shape)
 
 
 class FeatureExtraction(nn.Module):
     def __init__(self):
-        super(FeatureExtraction).__init__()
+        super(FeatureExtraction, self).__init__()
         self.f1_conv = nn.Sequential(
             nn.Conv2d(4, 32, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -59,14 +59,10 @@ class FeatureExtraction(nn.Module):
         current_frame = x[:, 0, :, :, :]
         past_frames = x[:, 1:, :, :, :].reshape(B * (I - 1), C, H, W)
 
-        f1_features = self.f1_conv(current_frame)
-        fp_features = self.fp_conv(past_frames)
+        f1_features = self.f1_conv(current_frame).unsqueeze(FRAME_DIM)
+        # Each fame is processed individually with shared weights, so we reshape
+        fp_features = self.fp_conv(past_frames).reshape(B, I - 1, 8, H, W)
+        features = torch.cat([f1_features, fp_features], dim=FRAME_DIM)
 
-        f1_features_cat = torch.cat([f1_features, current_frame], dim=1).unsqueeze(
-            FRAME_DIM
-        )
-        fp_features_cat = torch.cat([fp_features, past_frames], dim=2).reshape(
-            B, I - 1, 8, H, W
-        )
-
-        return torch.cat([f1_features_cat, fp_features_cat], dim=FRAME_DIM)
+        # Output: (B, I, 12, H, W)
+        return torch.cat([x, features], dim=CHANNEL_DIM)

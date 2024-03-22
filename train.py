@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from dataset import NSSDataset
-from model import NeuralSuperSamplingNetwork
-from loss import NssLoss
+from data import NSSDataset
+from model.model import NeuralSuperSamplingNetwork
+from model.loss import NssLoss
 from tqdm import tqdm
 import wandb
 
