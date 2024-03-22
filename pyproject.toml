@@ -19,6 +19,7 @@ openexr = "^3.2.3"
 imath = "^0.0.2"
 tqdm = "^4.66.2"
 wandb = "^0.16.4"
+lightning = "^2.2.1"
 
 
 [build-system]
