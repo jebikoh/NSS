@@ -13,9 +13,12 @@ CHANNEL_DIM = 2
 
 
 class NeuralSuperSampling(nn.Module):
-    def __init__(self, input_resolution, output_resolution):
+    def __init__(self, x_scale, y_scale):
         super(NeuralSuperSampling, self).__init__()
         self.feature_extraction = FeatureExtraction()
+        self.zero_upsample = ZeroUpsample(x_scale, y_scale)
+        self.x_scale = x_scale
+        self.y_scale = y_scale
 
     def forward(self, batch):
         # color: (B, I, 3, H, W)
@@ -31,7 +34,8 @@ class NeuralSuperSampling(nn.Module):
 
         # Feature extraction
         features = self.feature_extraction(torch.cat([color, depth], dim=CHANNEL_DIM))
-        print(features.shape)
+        zu_features = self.zero_upsample(features)
+        print(zu_features.shape)
 
 
 class FeatureExtraction(nn.Module):
@@ -66,3 +70,16 @@ class FeatureExtraction(nn.Module):
 
         # Output: (B, I, 12, H, W)
         return torch.cat([x, features], dim=CHANNEL_DIM)
+
+
+class ZeroUpsample(nn.Module):
+    def __init__(self, x_scale, y_scale):
+        super(ZeroUpsample, self).__init__()
+        self.x_scale = int(x_scale)
+        self.y_scale = int(y_scale)
+
+    def forward(self, x):
+        B, I, C, H, W = x.shape
+        x2 = torch.zeros(B, I, C, H * self.y_scale, W * self.x_scale)
+        x2[:, :, :, :: self.y_scale, :: self.x_scale] = x
+        return x2
