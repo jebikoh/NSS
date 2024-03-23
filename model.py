@@ -13,12 +13,11 @@ CHANNEL_DIM = 2
 
 
 class NeuralSuperSampling(nn.Module):
-    def __init__(self, x_scale, y_scale):
+    def __init__(self, scale_factor):
         super(NeuralSuperSampling, self).__init__()
+        self.scale_factor = scale_factor
         self.feature_extraction = FeatureExtraction()
-        self.zero_upsample = ZeroUpsample(x_scale, y_scale)
-        self.x_scale = x_scale
-        self.y_scale = y_scale
+        self.zero_upsample = ZeroUpsample(scale_factor)
 
     def forward(self, batch):
         # color: (B, I, 3, H, W)
@@ -35,7 +34,14 @@ class NeuralSuperSampling(nn.Module):
         # Feature extraction
         features = self.feature_extraction(torch.cat([color, depth], dim=CHANNEL_DIM))
         zu_features = self.zero_upsample(features)
-        print(zu_features.shape)
+
+        # Reprojection
+        bl_motion = F.interpolate(
+            motion.reshape(B * I, 2, H, W),
+            scale_factor=self.scale_factor,
+            mode="bilinear",
+            align_corners=False,
+        )
 
 
 class FeatureExtraction(nn.Module):
@@ -73,13 +79,26 @@ class FeatureExtraction(nn.Module):
 
 
 class ZeroUpsample(nn.Module):
-    def __init__(self, x_scale, y_scale):
+    def __init__(self, scale_factor):
         super(ZeroUpsample, self).__init__()
-        self.x_scale = int(x_scale)
-        self.y_scale = int(y_scale)
+        self.scale_factor = scale_factor
 
     def forward(self, x):
         B, I, C, H, W = x.shape
-        x2 = torch.zeros(B, I, C, H * self.y_scale, W * self.x_scale)
-        x2[:, :, :, :: self.y_scale, :: self.x_scale] = x
-        return x2
+
+        output_w, output_h = W * self.scale_factor, H * self.scale_factor
+        output = torch.zeros(B, I, C, output_h, output_w, device=x.device)
+
+        indices_h = (
+            torch.arange(0, output_h, self.scale_factor, device=x.device)
+            + self.scale_factor // 2
+        )
+        indices_w = (
+            torch.arange(0, output_w, self.scale_factor, device=x.device)
+            + self.scale_factor // 2
+        )
+        indices_grid_h, indices_grid_w = torch.meshgrid(indices_h, indices_w)
+
+        output[:, :, :, indices_grid_h, indices_grid_w] = x
+
+        return output
