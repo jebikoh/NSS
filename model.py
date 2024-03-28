@@ -24,11 +24,10 @@ class NeuralSuperSampling(nn.Module):
         )
         self.reconstruction = Reconstruction(self.num_frames)
 
-    def forward(self, batch):
+    def forward(self, color, motion, depth):
         # color: (B, I, 3, H, W)
         # motion: (B, I, 2, H, W)
         # depth: (B, I, 1, H, W)
-        color, motion, depth = batch
         B, I, _, H, W = color.shape
         H_n, W_n = H * self.scale_factor, W * self.scale_factor
 
