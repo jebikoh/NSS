@@ -22,6 +22,7 @@ class NeuralSuperSampling(nn.Module):
         self.zero_upsample = ZeroUpsample(scale_factor)
         self.backward_warp = AccumulativeBackwardWarp()
         self.feature_reweighting = FeatureReweightingNetwork(self.num_frames)
+        self.reconstruction = Reconstruction(self.num_frames)
 
     def forward(self, batch):
         # color: (B, I, 3, H, W)
@@ -63,10 +64,12 @@ class NeuralSuperSampling(nn.Module):
             )
         )
         fp_rgbd = features[:, 1:, 0:4, :, :]
+        # This occurs in-place, features of f0 are exempt
         features = self.feature_reweighting(
             torch.cat([f0_rgbd, fp_rgbd], dim=FRAME_DIM).reshape(B, I * 4, H_n, W_n),
             features,
         )
+        return self.reconstruction(features.reshape(B, 12 * I, H_n, W_n))
 
 
 class FeatureExtraction(nn.Module):
@@ -160,11 +163,44 @@ class FeatureReweightingNetwork(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, rgbd, features):
-        B, I, C, H, W = features.shape
         x = self.relu(self.conv1(rgbd))
         x = self.relu(self.conv2(x))
         x = self.tanh(self.conv3(x))
-
         x = (x + 1) * self.scale
-        print(features.shape)
-        print(rgbd.shape)
+
+        features[:, 1:, :, :, :].mul_(x.unsqueeze(CHANNEL_DIM))
+        return features
+
+
+class Reconstruction(nn.Module):
+    def __init__(self, num_frames):
+        super(Reconstruction, self).__init__()
+        self.num_frames = num_frames
+
+        self.conv1 = nn.Conv2d(12 * num_frames, 64, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(64, 32, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        self.conv5 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.conv6 = nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        self.upsz6 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.conv7 = nn.Conv2d(128, 64, kernel_size=3, padding=1)
+        self.conv8 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        self.upsz8 = nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
+        self.conv9 = nn.Conv2d(64, 32, kernel_size=3, padding=1)
+        self.conv10 = nn.Conv2d(32, 3, kernel_size=3, padding=1)
+
+        self.relu = nn.ReLU(inplace=True)
+        self.pool = nn.MaxPool2d(2)
+
+    def forward(self, features):
+        x1 = self.relu(self.conv1(features))
+        x2 = self.relu(self.conv2(x1))
+        x3 = self.relu(self.conv3(self.pool(x2)))
+        x4 = self.relu(self.conv4(x3))
+        x5 = self.relu(self.conv5(self.pool(x4)))
+        x6 = self.upsz6(self.relu(self.conv6(x5)))
+        x7 = self.relu(self.conv7(torch.cat([x4, x6], dim=1)))
+        x8 = self.upsz8(self.relu(self.conv8(x7)))
+        x9 = self.relu(self.conv9(torch.cat([x2, x8], dim=1)))
+        return self.relu(self.conv10(x9))
