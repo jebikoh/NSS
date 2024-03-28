@@ -1,8 +1,6 @@
 import torch
-from torch import optim
 import torch.nn as nn
 import torch.nn.functional as F
-import lightning as L
 import kornia as K
 from util import warp
 
@@ -14,14 +12,16 @@ CHANNEL_DIM = 2
 
 
 class NeuralSuperSampling(nn.Module):
-    def __init__(self, scale_factor, num_frames=5):
+    def __init__(self, scale_factor, num_frames=5, weight_scale=10):
         super(NeuralSuperSampling, self).__init__()
         self.scale_factor = scale_factor
-        self.num_frames = 5
+        self.num_frames = num_frames
         self.feature_extraction = FeatureExtraction()
         self.zero_upsample = ZeroUpsample(scale_factor)
         self.backward_warp = AccumulativeBackwardWarp()
-        self.feature_reweighting = FeatureReweightingNetwork(self.num_frames)
+        self.feature_reweighting = FeatureReweightingNetwork(
+            self.num_frames, weight_scale
+        )
         self.reconstruction = Reconstruction(self.num_frames)
 
     def forward(self, batch):
