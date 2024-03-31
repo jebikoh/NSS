@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torchvision.models import vgg16, VGG16_Weights
-from pytorch_msssim import SSIM
+from pytorch_msssim import ssim
 import torchvision.transforms as T
 
 
@@ -35,11 +35,10 @@ class PerceptualLoss(nn.Module):
 class WeightedSSIMPerceptualLoss(nn.Module):
     def __init__(self, pl_weight=0.1):
         super(WeightedSSIMPerceptualLoss, self).__init__()
-        self.ssim = SSIM()
         self.w = pl_weight
         self.perceptual = PerceptualLoss()
 
     def forward(self, x, y):
-        ssim_loss = 1 - self.ssim(x, y, data_range=1.0, size_average=True)
+        ssim_loss = 1 - ssim(x, y, data_range=1.0, size_average=True)
         perceptual_loss = self.perceptual(x, y)
         return ssim_loss + self.w * perceptual_loss
