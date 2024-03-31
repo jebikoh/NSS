@@ -3,7 +3,8 @@ import torch.nn.functional as F
 import OpenEXR
 import Imath
 import numpy as np
-import PIL as Image
+from PIL import Image
+import random
 
 
 def warp(input, flow):
@@ -49,7 +50,7 @@ def read_motion(file_path: str, negate_mv: bool = True):
     if negate_mv:
         mv = -mv
 
-    return np.stack((mh, mv), axis=0)
+    return np.stack((mh, mv), axis=-1)
 
 
 def read_depth(file_path: str):
@@ -61,3 +62,17 @@ def read_depth(file_path: str):
         + depth_img[:, :, 3] / 255.0**4
     )
     return depth
+
+
+def get_random_patch_coordinates(im_shape, lr_patch_size, scale_factor):
+    lr_max_x = im_shape[1] - lr_patch_size
+    lr_max_y = im_shape[0] - lr_patch_size
+    lr_x = random.randint(0, lr_max_x)
+    lr_y = random.randint(0, lr_max_y)
+    hr_x = lr_x * scale_factor
+    hr_y = lr_y * scale_factor
+    return (lr_x, lr_y), (hr_x, hr_y)
+
+
+def extract_patch(im, x, y, patch_size):
+    return im[y : y + patch_size, x : x + patch_size]
