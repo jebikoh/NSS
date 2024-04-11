@@ -1,54 +1,66 @@
 import torch
 import matplotlib.pyplot as plt
-from dataset import NSSDataset
-from model import NeuralSuperSamplingNetwork
+import os
+from dataset import QRISPDataset
 
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 
 if __name__ == "__main__":
-    test_data = NSSDataset("data", split="train")
-    test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=True)
+    data_path = "data/"
+    dataset = QRISPDataset(data_path, split="train", sequence_length=5)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True)
 
-    model = NeuralSuperSamplingNetwork((480, 270), (960, 540))
-    checkpoint = torch.load(
-        "weights/best_model_weights.pth", map_location=torch.device("cpu")
-    )
-    model.load_state_dict(checkpoint)
-    model.eval()
+    for i, data in enumerate(dataloader):
+        (
+            color_frames,
+            motion_frames,
+            depth_frames,
+            trgt_frames,
+            sequence,
+            frame_idx,
+            f0,
+        ) = data
 
-    for i, data in enumerate(test_loader):
-        color, motion, depth, yhat, sequence, frame_idx = data
-        print(sequence, frame_idx)
-        yhat_pred = model(color, motion, depth)
+        fig, (axs1, axs2) = plt.subplots(2, 5, figsize=(12, 6))
 
-        print(torch.max(yhat_pred), torch.min(yhat_pred))
+        fig.suptitle(
+            f"Sequence: {sequence[0]}, Frames: {frame_idx.item()} - {f0.item()}"
+        )
 
-        color = color.squeeze(0)[0]
-        yhat_pred = yhat_pred.squeeze(0)
-        yhat = yhat.squeeze(0)
+        # Display color frame 0
+        axs1[0].imshow(color_frames[0, 1].permute(1, 2, 0))
+        axs1[0].set_title("Color Frame 0")
+        axs1[0].axis("off")
 
-        input = color.permute(1, 2, 0)
-        yhat_pred = yhat_pred.permute(1, 2, 0)
-        yhat = yhat.permute(1, 2, 0)
+        # Display motion frame 0
+        axs1[1].imshow(motion_frames[0, 1, 0].unsqueeze(-1), cmap="viridis")
+        axs1[1].set_title("Horizontal Motion Frame -1")
+        axs1[1].axis("off")
 
-        input = input.detach().cpu().numpy()
-        yhat_pred = yhat_pred.detach().cpu().numpy()
-        yhat = yhat.detach().cpu().numpy()
+        axs1[2].imshow(motion_frames[0, 1, 1].unsqueeze(-1), cmap="viridis")
+        axs1[2].set_title("Vertical Motion Frame -1")
+        axs1[2].axis("off")
 
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+        # Display depth frame 0
+        axs1[3].imshow(depth_frames[0, 0, 0], cmap="gray")
+        axs1[3].set_title("Depth Frame 0")
+        axs1[3].axis("off")
 
-        fig.suptitle(f"Sequence: {sequence}, Frame: {frame_idx}")
+        # Display target frame
+        axs1[4].imshow(trgt_frames[0].permute(1, 2, 0))
+        axs1[4].set_title("Target Frame")
+        axs1[4].axis("off")
 
-        ax1.imshow(input)
-        ax1.axis("off")
-        ax1.set_title("Input 270p")
-
-        ax2.imshow(yhat)
-        ax2.axis("off")
-        ax2.set_title("Rendered 540p")
-
-        ax3.imshow(yhat_pred)
-        ax3.axis("off")
-        ax3.set_title("NSS 540p")
+        axs2[0].imshow(color_frames[0, 0].permute(1, 2, 0))
+        axs2[0].set_title("Color Frame 0")
+        axs2[1].imshow(color_frames[0, 1].permute(1, 2, 0))
+        axs2[1].set_title("Color Frame -1")
+        axs2[2].imshow(color_frames[0, 2].permute(1, 2, 0))
+        axs2[2].set_title("Color Frame -2")
+        axs2[3].imshow(color_frames[0, 3].permute(1, 2, 0))
+        axs2[3].set_title("Color Frame -3")
+        axs2[4].imshow(color_frames[0, 4].permute(1, 2, 0))
+        axs2[4].set_title("Color Frame -4")
 
         plt.tight_layout()
         plt.show()

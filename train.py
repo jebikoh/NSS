@@ -1,101 +1,92 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
+import lightning as L
+from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+from torch import optim
+from model import NeuralSuperSampling
+from loss import WeightedSSIMPerceptualLoss
+from dataset import QRISPDataset
 from torch.utils.data import DataLoader
-from dataset import NSSDataset
-from model import NeuralSuperSamplingNetwork
-from loss import NssLoss
-from tqdm import tqdm
-import wandb
 
-DATA_DIR = "data"
-NUM_WORKERS = 2
 
-BATCH_SIZE = 8
-LR = 1e-4
-NUM_EPOCHS = 100
+class NeuralSuperSamplingPL(L.LightningModule):
+    def __init__(
+        self,
+        scale_factor,
+        num_frames=5,
+        weight_scale=10,
+        lr=1e-4,
+        perceptual_weight=0.1,
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+        self.lr = lr
+        self.nss = NeuralSuperSampling(scale_factor, num_frames, weight_scale)
+        self.loss = WeightedSSIMPerceptualLoss(perceptual_weight)
+
+    def training_step(self, batch, batch_idx):
+        color, motion, depth, y = batch
+        y_hat = self.nss(color, motion, depth)
+        loss = self.loss(y, y_hat)
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        color, motion, depth, y = batch
+        y_hat = self.nss(color, motion, depth)
+        loss = self.loss(y, y_hat)
+        self.log("val_loss", loss)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        color, motion, depth, y = batch
+        y_hat = self.nss(color, motion, depth)
+        loss = self.loss(y, y_hat)
+        self.log("test_loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        return optimizer
+
 
 if __name__ == "__main__":
-    wandb.init(
-        project="NSS",
-        config={"batch_size": BATCH_SIZE, "lr": LR, "num_epochs": NUM_EPOCHS},
+    SEQUENCE_LENGTH = 5
+    BATCH_SIZE = 8
+    EPOCHS = 10
+    NUM_WORKERS = 11
+
+    train_data = QRISPDataset("data/", split="train", sequence_length=SEQUENCE_LENGTH)
+    val_data = QRISPDataset("data/", split="val", sequence_length=SEQUENCE_LENGTH)
+    test_data = QRISPDataset("data/", split="test", sequence_length=SEQUENCE_LENGTH)
+
+    train_loader = DataLoader(
+        train_data,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=NUM_WORKERS,
+        persistent_workers=True,
+    )
+    val_loader = DataLoader(
+        val_data,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=NUM_WORKERS,
+        persistent_workers=True,
+    )
+    test_loader = DataLoader(
+        test_data,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=NUM_WORKERS,
+        persistent_workers=True,
     )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
-
-    train_dataset = NSSDataset(DATA_DIR, split="train")
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS
-    )
-    val_dataset = NSSDataset(DATA_DIR, split="val")
-    val_dataloader = DataLoader(
-        val_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS
+    model = NeuralSuperSamplingPL(
+        scale_factor=2, num_frames=5, weight_scale=10, lr=1e-4, perceptual_weight=0.1
     )
 
-    model = NeuralSuperSamplingNetwork((480, 270), (960, 540)).to(device)
-    criterion = NssLoss()
-    criterion.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=LR)
+    early_stop = EarlyStopping(monitor="val_loss", patience=3, mode="min")
 
-    best_val_loss = float("inf")
+    trainer = L.Trainer(max_epochs=EPOCHS, callbacks=[early_stop])
+    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
-    # Training loop
-    for epoch in range(NUM_EPOCHS):
-        running_loss = 0.0
-        train_bar = tqdm(
-            train_dataloader,
-            desc=f"Epoch [{epoch+1}/{NUM_EPOCHS}] (Train)",
-            unit="batch",
-        )
-
-        for i, data in enumerate(train_bar):
-            color, motion, depth, target = data
-            color = color.to(device)
-            motion = motion.to(device)
-            depth = depth.to(device)
-            target = target.to(device)
-
-            optimizer.zero_grad()
-            output = model(color, motion, depth)
-            loss = criterion(output, target)
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
-            train_bar.set_postfix(loss=loss.item())
-            break
-
-        epoch_loss = running_loss / len(train_dataloader)
-        print(f"Epoch [{epoch+1}/{NUM_EPOCHS}], Train Loss: {epoch_loss:.4f}")
-
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            eval_bar = tqdm(
-                val_dataloader,
-                desc=f"Epoch [{epoch+1}/{NUM_EPOCHS}] (Val)",
-                unit="batch",
-            )
-            for i, data in enumerate(eval_bar):
-                color, motion, depth, target = data
-                color = color.to(device)
-                motion = motion.to(device)
-                depth = depth.to(device)
-                target = target.to(device)
-
-                output = model(color, motion, depth)
-                loss = criterion(output, target)
-                val_loss += loss.item()
-        val_loss /= len(val_dataloader)
-        print(f"Epoch [{epoch+1}/{NUM_EPOCHS}], Val Loss: {val_loss:.4f}")
-
-        wandb.log({"train_loss": epoch_loss, "val_loss": val_loss})
-
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), "weights/best_model_weights.pth")
-            print("Best model weights saved as 'best_model_weights.pth'")
-    wandb.finish()
-    torch.save(model.state_dict(), "weights/final_weights.pth")
-    print("Done")
+    trainer.test(model=model, test_dataloaders=test_loader)

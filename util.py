@@ -1,54 +1,78 @@
 import torch
 import torch.nn.functional as F
-import kornia.color as kc
+import OpenEXR
+import Imath
+import numpy as np
+from PIL import Image
+import random
 
 
-def zero_upsampling(input, sample_factor):
-    h_scale, w_scale = sample_factor
-    C, H, W = input.shape
-    up = torch.zeros((C, H * h_scale, W * w_scale), dtype=input.dtype)
-    up[:, ::h_scale, ::w_scale] = input
+def warp(input, flow):
+    # Adapted from: https://discuss.pytorch.org/t/image-warping-for-backward-flow-using-forward-flow-matrix-optical-flow/99298
+    # Flow should have horizontal in channel 0 and vertical in channel 1
+    B, _, H, W = input.shape
 
-    return up
-
-
-def backward_warp(input, motion_vectors):
-    # This is taken from here: https://discuss.pytorch.org/t/image-warping-for-backward-flow-using-forward-flow-matrix-optical-flow/99298
-    # I added comments for clarity
-    B, C, H, W = input.shape
-    # These two lines create a grid of coordinates
-    # x goes from 0 to W-1, repeated H times
-    # y goes from 0 to H-1, repeated W times
     x = (
-        torch.arange(0, W, dtype=input.dtype, device=input.device)
+        torch.arange(W, dtype=input.dtype, device=input.device)
         .view(1, -1)
-        .repeat(H, 1)
+        .expand(H, -1)
     )
     y = (
-        torch.arange(0, H, dtype=input.dtype, device=input.device)
+        torch.arange(H, dtype=input.dtype, device=input.device)
         .view(-1, 1)
-        .repeat(1, W)
+        .expand(-1, W)
     )
-    # We reshape them to input shape, repeat for batch size
     x = x.view(1, 1, H, W).repeat(B, 1, 1, 1)
     y = y.view(1, 1, H, W).repeat(B, 1, 1, 1)
-    # We concat them: (B, 2, H, W)
-    grid = torch.cat((x, y), 1).float()
-    # We add the motion vectors to the grid
-    vgrid = grid + motion_vectors
-    # Now we normalize the vectors to be in the range [-1, 1]
-    vgrid[:, 0, :, :] = 2.0 * vgrid[:, 0, :, :] / max(W - 1, 1) - 1.0
-    vgrid[:, 1, :, :] = 2.0 * vgrid[:, 1, :, :] / max(H - 1, 1) - 1.0
+    grid = torch.cat((x, y), 1)
+    vgrid = grid + flow
+    vgrid[:, 0, :, :] = 2 * vgrid[:, 0, :, :] / max(W - 1, 1) - 1
+    vgrid[:, 1, :, :] = 2 * vgrid[:, 1, :, :] / max(H - 1, 1) - 1
 
-    # Warp the input tensor off the grid using bilinear interpolation
     return F.grid_sample(
-        input, vgrid.permute(0, 2, 3, 1), mode="bilinear", align_corners=False
+        input, vgrid.permute(0, 2, 3, 1), "bilinear", align_corners=True
     )
 
 
-def rgb_to_ycbcr(images):
-    return kc.rgb_to_ycbcr(images)
+def read_motion(file_path: str, negate_mv: bool = True):
+    exr_file = OpenEXR.InputFile(file_path)
+
+    header = exr_file.header()
+    dw = header["dataWindow"]
+    size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
+
+    vertical_channel = exr_file.channel("R", Imath.PixelType(Imath.PixelType.FLOAT))
+    horizontal_channel = exr_file.channel("G", Imath.PixelType(Imath.PixelType.FLOAT))
+
+    mv = np.frombuffer(vertical_channel, dtype=np.float32).reshape(size[1], size[0])
+    mh = np.frombuffer(horizontal_channel, dtype=np.float32).reshape(size[1], size[0])
+
+    if negate_mv:
+        mv = -mv
+
+    return np.stack((mh, mv), axis=-1)
 
 
-def ycbcr_to_rgb(images):
-    return kc.ycbcr_to_rgb(images)
+def read_depth(file_path: str):
+    depth_img = np.array(Image.open(file_path))
+    depth = (
+        depth_img[:, :, 0] / 255.0
+        + depth_img[:, :, 1] / 255.0**2
+        + depth_img[:, :, 2] / 255.0**3
+        + depth_img[:, :, 3] / 255.0**4
+    )
+    return depth
+
+
+def get_random_patch_coordinates(im_shape, lr_patch_size, scale_factor):
+    lr_max_x = im_shape[1] - lr_patch_size
+    lr_max_y = im_shape[0] - lr_patch_size
+    lr_x = random.randint(0, lr_max_x)
+    lr_y = random.randint(0, lr_max_y)
+    hr_x = lr_x * scale_factor
+    hr_y = lr_y * scale_factor
+    return (lr_x, lr_y), (hr_x, hr_y)
+
+
+def extract_patch(im, x, y, patch_size):
+    return im[y : y + patch_size, x : x + patch_size]

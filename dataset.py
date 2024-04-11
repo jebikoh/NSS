@@ -1,46 +1,43 @@
 import os
-import random
-
 import matplotlib.pyplot as plt
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from PIL import Image
-import Imath
 import numpy as np
-import OpenEXR
-
-NUM_SEQUENCES = 41
-NUM_FRAMES = 30
+from util import read_motion, read_depth, get_random_patch_coordinates, extract_patch
 
 
-def read_exr_velocities_16bit(file_path):
-    exr_file = OpenEXR.InputFile(file_path)
-    header = exr_file.header()
-    dw = header["dataWindow"]
-    size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
-    pt = Imath.PixelType(Imath.PixelType.HALF)
-    vertical_velocity = np.frombuffer(exr_file.channel("R", pt), dtype=np.float16)
-    horizontal_velocity = np.frombuffer(exr_file.channel("G", pt), dtype=np.float16)
-    vertical_velocity = vertical_velocity.reshape(size[1], size[0])
-    horizontal_velocity = horizontal_velocity.reshape(size[1], size[0])
-    exr_file.close()
-    return vertical_velocity, horizontal_velocity
-
-
-class NSSDataset(Dataset):
+class QRISPDataset(Dataset):
     def __init__(
-        self, data_dir, split="train", split_ratio=(0.8, 0.1, 0.1), sequence_length=5
+        self,
+        data_dir,
+        num_frames=30,
+        num_sequences=41,
+        split="train",
+        split_ratio=(0.8, 0.1, 0.1),
+        sequence_length=5,
+        base_resolution=(270, 480),
+        trgt_resolution=(540, 960),
+        base_crop_size=128,
+        trgt_crop_size=256,
     ):
+        self.num_frames = num_frames
+        self.num_sequences = num_sequences
         self.data_dir = data_dir
         self.split = split
+        self.split_ratio = split_ratio
         self.sequence_length = sequence_length
-        self.sequences = sorted(os.listdir(os.path.join(data_dir, "270p", "color")))
+        self.base_resolution = base_resolution
+        self.trgt_resolution = trgt_resolution
+        self.base_crop_size = base_crop_size
+        self.trgt_crop_size = trgt_crop_size
+        self.scale_factor = trgt_resolution[0] // base_resolution[0]
 
-        # Uncomment this if running on mac
+        self.sequences = sorted(
+            os.listdir(os.path.join(data_dir, f"{base_resolution[0]}p", "color"))
+        )
         if ".DS_Store" in self.sequences:
             self.sequences.remove(".DS_Store")
-
-        assert len(self.sequences) == NUM_SEQUENCES
 
         train_ratio, val_ratio, _ = split_ratio
 
@@ -58,74 +55,68 @@ class NSSDataset(Dataset):
             ]
 
     def __len__(self):
-        return len(self.sequences) * NUM_FRAMES
-
-    def get_random_patch_coordinates(self, img_shape, lr_patch_size=128, hr_scale=2):
-        lr_max_x = img_shape[1] - lr_patch_size
-        lr_max_y = img_shape[0] - lr_patch_size
-        lr_x = random.randint(0, lr_max_x)
-        lr_y = random.randint(0, lr_max_y)
-        hr_x = lr_x * hr_scale
-        hr_y = lr_y * hr_scale
-        return (lr_x, lr_y), (hr_x, hr_y)
-
-    def extract_patch(self, img, x, y, size):
-        return img[y : y + size, x : x + size]
+        return len(self.sequences) * (self.num_frames - self.sequence_length)
 
     def __getitem__(self, idx):
-        seq_idx = random.randint(0, len(self.sequences) - 1)
-        frame_idx = random.randint(4, NUM_FRAMES - 1)
+        seq_idx = idx // (self.num_frames - self.sequence_length)
+        frame_idx = idx % (self.num_frames - self.sequence_length)
         sequence = self.sequences[seq_idx]
 
         color_frames = []
         motion_frames = []
         depth_frames = []
 
-        img_shape = None
-        (lr_x, lr_y), (hr_x, hr_y) = (None, None), (None, None)
+        (base_x, base_y), (trgt_x, trgt_y) = get_random_patch_coordinates(
+            self.base_resolution, self.base_crop_size, self.scale_factor
+        )
 
-        for i in range(frame_idx, frame_idx - 5, -1):
+        f0 = frame_idx + self.sequence_length - 1
+
+        for i in range(f0, frame_idx - 1, -1):
             color_path = os.path.join(
-                self.data_dir, "270p", "color", sequence, f"{i:04d}.png"
+                self.data_dir,
+                f"{self.base_resolution[0]}p",
+                "color",
+                sequence,
+                f"{i:04d}.png",
             )
             motion_path = os.path.join(
-                self.data_dir, "270p", "motion", sequence, f"{i:04d}.exr"
+                self.data_dir,
+                f"{self.base_resolution[0]}p",
+                "motion",
+                sequence,
+                f"{i:04d}.exr",
             )
             depth_path = os.path.join(
-                self.data_dir, "270p", "depth", sequence, f"{i:04d}.png"
+                self.data_dir,
+                f"{self.base_resolution[0]}p",
+                "depth",
+                sequence,
+                f"{i:04d}.png",
             )
 
             color_img = np.array(Image.open(color_path).convert("RGB")) / 255.0
+            color_img = extract_patch(color_img, base_x, base_y, self.base_crop_size)
+            color_frames.append(color_img)
 
-            if img_shape is None:
-                img_shape = color_img.shape
-                (lr_x, lr_y), (hr_x, hr_y) = self.get_random_patch_coordinates(
-                    img_shape
-                )
+            motion_img = read_motion(motion_path)
+            motion_img = extract_patch(motion_img, base_x, base_y, self.base_crop_size)
+            motion_frames.append(motion_img)
 
-            color_frames.append(self.extract_patch(color_img, lr_x, lr_y, 128))
+            depth_img = read_depth(depth_path)
+            depth_img = extract_patch(depth_img, base_x, base_y, self.base_crop_size)
+            depth_frames.append(depth_img)
 
-            vert_vel, hor_vel = read_exr_velocities_16bit(motion_path)
-            motion_img = np.stack([hor_vel, vert_vel], axis=-1)
-            motion_frames.append(self.extract_patch(motion_img, lr_x, lr_y, 128))
+        trgt_path = os.path.join(
+            self.data_dir,
+            f"{self.trgt_resolution[0]}p",
+            "color",
+            sequence,
+            f"{f0:04d}.png",
+        )
 
-            depth_img = np.array(Image.open(depth_path))
-            depth = (
-                depth_img[:, :, 0] / 255.0
-                + depth_img[:, :, 1] / 255.0**2
-                + depth_img[:, :, 2] / 255.0**3
-                + depth_img[:, :, 3] / 255.0**4
-            )
-            depth_frames.append(
-                self.extract_patch(depth[:, :, np.newaxis], lr_x, lr_y, 128)
-            )
-        yhat_img = Image.open(
-            os.path.join(
-                self.data_dir, "540p", "color", sequence, f"{frame_idx:04d}.png"
-            )
-        ).convert("RGB")
-        yhat = np.array(yhat_img) / 255.0
-        yhat = self.extract_patch(yhat, hr_x, hr_y, 256)
+        trgt_img = np.array(Image.open(trgt_path).convert("RGB")) / 255.0
+        trgt_img = extract_patch(trgt_img, trgt_x, trgt_y, self.trgt_crop_size)
 
         color_frames = np.stack(color_frames, axis=0)
         motion_frames = np.stack(motion_frames, axis=0)
@@ -133,35 +124,61 @@ class NSSDataset(Dataset):
 
         color_frames = torch.from_numpy(color_frames).permute(0, 3, 1, 2).float()
         motion_frames = torch.from_numpy(motion_frames).permute(0, 3, 1, 2).float()
-        depth_frames = torch.from_numpy(depth_frames).permute(0, 3, 1, 2).float()
-        yhat = torch.from_numpy(yhat).permute(2, 0, 1).float()
+        depth_frames = torch.from_numpy(depth_frames).unsqueeze(1).float()
+        trgt_frames = torch.from_numpy(trgt_img).permute(2, 0, 1).float()
 
-        return color_frames, motion_frames, depth_frames, yhat, sequence, frame_idx
+        return (
+            color_frames,
+            motion_frames,
+            depth_frames,
+            trgt_frames,
+        )
 
 
 if __name__ == "__main__":
-    dataset = NSSDataset("data", split="test")
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=4)
+    data_path = "data/"
+    dataset = QRISPDataset(data_path, split="train", sequence_length=5)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True)
 
     for i, data in enumerate(dataloader):
-        color, motion, depth, yhat = data
+        (color_frames, motion_frames, depth_frames, trgt_frames) = data
 
-        color = color.squeeze(0).cpu().numpy()
-        yhat = yhat.squeeze(0).permute(1, 2, 0).cpu().numpy()
+        fig, (axs1, axs2) = plt.subplots(2, 5, figsize=(12, 6))
 
-        fig, axes = plt.subplots(1, 5, figsize=(20, 4))
+        # Display color frame 0
+        axs1[0].imshow(color_frames[0, 1].permute(1, 2, 0))
+        axs1[0].set_title("Color Frame 0")
+        axs1[0].axis("off")
 
-        for j in range(5):
-            axes[j].imshow(color[j].transpose(1, 2, 0))
-            axes[j].set_title(f"Color Frame {j+1}")
-            axes[j].axis("off")
+        # Display motion frame 0
+        axs1[1].imshow(motion_frames[0, 1, 0].unsqueeze(-1), cmap="viridis")
+        axs1[1].set_title("Horizontal Motion Frame -1")
+        axs1[1].axis("off")
 
-        plt.figure(figsize=(8, 4))
-        plt.imshow(yhat)
-        plt.title("Yhat Image")
-        plt.axis("off")
+        axs1[2].imshow(motion_frames[0, 1, 1].unsqueeze(-1), cmap="viridis")
+        axs1[2].set_title("Vertical Motion Frame -1")
+        axs1[2].axis("off")
+
+        # Display depth frame 0
+        axs1[3].imshow(depth_frames[0, 0, 0], cmap="gray")
+        axs1[3].set_title("Depth Frame 0")
+        axs1[3].axis("off")
+
+        # Display target frame
+        axs1[4].imshow(trgt_frames[0].permute(1, 2, 0))
+        axs1[4].set_title("Target Frame")
+        axs1[4].axis("off")
+
+        axs2[0].imshow(color_frames[0, 0].permute(1, 2, 0))
+        axs2[0].set_title("Color Frame 0")
+        axs2[1].imshow(color_frames[0, 1].permute(1, 2, 0))
+        axs2[1].set_title("Color Frame -1")
+        axs2[2].imshow(color_frames[0, 2].permute(1, 2, 0))
+        axs2[2].set_title("Color Frame -2")
+        axs2[3].imshow(color_frames[0, 3].permute(1, 2, 0))
+        axs2[3].set_title("Color Frame -3")
+        axs2[4].imshow(color_frames[0, 4].permute(1, 2, 0))
+        axs2[4].set_title("Color Frame -4")
 
         plt.tight_layout()
         plt.show()
-
-        break
