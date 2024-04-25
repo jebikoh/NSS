@@ -2,6 +2,7 @@ import lightning as L
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from torch import optim
 from model import NeuralSuperSampling
+import kornia as K
 from loss import WeightedSSIMPerceptualLoss
 from dataset import QRISPDataset
 from torch.utils.data import DataLoader
@@ -17,35 +18,42 @@ class NeuralSuperSamplingPL(L.LightningModule):
         perceptual_weight=0.1,
     ):
         super().__init__()
-        self.save_hyperparameters()
         self.lr = lr
         self.nss = NeuralSuperSampling(scale_factor, num_frames, weight_scale)
         self.loss = WeightedSSIMPerceptualLoss(perceptual_weight)
+        self.save_hyperparameters()
 
     def training_step(self, batch, batch_idx):
         color, motion, depth, y = batch
         y_hat = self.nss(color, motion, depth)
-        loss = self.loss(y, y_hat)
-        self.log("train_loss", loss)
+        loss = self.loss(K.color.rgb_to_ycbcr(y), y_hat)
+        self.log(
+            "train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
         return loss
 
     def validation_step(self, batch, batch_idx):
         color, motion, depth, y = batch
         y_hat = self.nss(color, motion, depth)
-        loss = self.loss(y, y_hat)
-        self.log("val_loss", loss)
+        loss = self.loss(K.color.rgb_to_ycbcr(y), y_hat)
+        self.log(
+            "val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
         return loss
 
     def test_step(self, batch, batch_idx):
         color, motion, depth, y = batch
         y_hat = self.nss(color, motion, depth)
-        loss = self.loss(y, y_hat)
+        loss = self.loss(K.color.rgb_to_ycbcr(y), y_hat)
         self.log("test_loss", loss)
         return loss
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self.lr)
         return optimizer
+
+    def forward(self, color, motion, depth):
+        return self.nss(color, motion, depth)
 
 
 if __name__ == "__main__":
@@ -85,8 +93,7 @@ if __name__ == "__main__":
     )
 
     early_stop = EarlyStopping(monitor="val_loss", patience=3, mode="min")
-
     trainer = L.Trainer(max_epochs=EPOCHS, callbacks=[early_stop])
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
-    trainer.test(model=model, test_dataloaders=test_loader)
+    trainer.test(model=model, dataloaders=test_loader)
