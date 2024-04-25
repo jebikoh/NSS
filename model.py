@@ -48,7 +48,6 @@ class NeuralSuperSampling(nn.Module):
             align_corners=False,
         ).reshape(B, I, 2, H_n, W_n)
 
-        # This occurs in-place
         features = self.backward_warp(features, motion)
 
         # Feature reweighting
@@ -138,14 +137,25 @@ class AccumulativeBackwardWarp(nn.Module):
     def forward(self, features, mv):
         _, I, _, _, _ = features.shape
 
+        warped_features = torch.zeros_like(features)
         for i in range(1, I):
             for j in range(i - 1, -1, -1):
-                features[:, i, :, :, :] = warp(
-                    features[:, i, :, :, :],
-                    mv[:, j, :, :, :].squeeze(FRAME_DIM),
+                warped_features[:, i, :, :, :] = warp(
+                    features[:, i, :, :, :], mv[:, j, :, :, :].squeeze(FRAME_DIM)
                 )
+        warped_features[:, 0:1, :, :, :] = features[:, 0:1, :, :, :]
+        return warped_features
 
-        return features
+        # This version is in-place; if gradient checkpoint is enabled, use this
+        # for i in range(1, I):
+        #     for j in range(i - 1, -1, -1):
+        #         print("Warping frame", i, "with frame", j, "motion vectors")
+        #         features[:, i, :, :, :] = warp(
+        #             features[:, i, :, :, :],
+        #             mv[:, j, :, :, :].squeeze(FRAME_DIM),
+        #         )
+
+        # return features
 
 
 class FeatureReweightingNetwork(nn.Module):
@@ -167,8 +177,13 @@ class FeatureReweightingNetwork(nn.Module):
         x = self.tanh(self.conv3(x))
         x = (x + 1) * self.scale
 
-        features[:, 1:, :, :, :].mul_(x.unsqueeze(CHANNEL_DIM))
-        return features
+        return torch.cat(
+            [
+                features[:, 0:1, :, :, :],
+                features[:, 1:, :, :, :].mul(x.unsqueeze(CHANNEL_DIM)),
+            ],
+            dim=FRAME_DIM,
+        )
 
 
 class Reconstruction(nn.Module):
