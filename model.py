@@ -136,7 +136,6 @@ class AccumulativeBackwardWarp(nn.Module):
 
     def forward(self, features, mv):
         _, I, _, _, _ = features.shape
-        print(features.shape)
 
         warped_features = torch.zeros_like(features)
         for i in range(1, I):
